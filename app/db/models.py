@@ -10,7 +10,12 @@ class Student(Base):
     student_id = Column(String(50), unique=True, nullable=False)
     student_name = Column(String(100), nullable=False)
     student_phone = Column(String(15), unique=True, nullable=False)
+
     created_at = Column(DateTime, server_default=func.now())
+
+    # NEW COLUMNS
+    last_call_time = Column(DateTime)
+    last_response = Column(String(20))
 
 
 class CallLog(Base):
@@ -24,6 +29,7 @@ class CallLog(Base):
     response_type = Column(String(20))                      # YES / NO / BUSY
 
     retry_count = Column(Integer, default=0)
+
     created_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime)
 

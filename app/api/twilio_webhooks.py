@@ -111,7 +111,7 @@ async def status_callback(request: Request):
                 handle_no_response(log)
 
         if call_status == "completed":
-            result = start_next_call()
+            result = start_next_call(start_new=False)
 
             if result.get("status") == "ALL_CALLS_COMPLETED":
                 print("🎯 All students processed.")

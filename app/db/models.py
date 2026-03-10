@@ -13,7 +13,6 @@ class Student(Base):
 
     created_at = Column(DateTime, server_default=func.now())
 
-    # NEW COLUMNS
     last_call_time = Column(DateTime)
     last_response = Column(String(20))
 
@@ -25,8 +24,8 @@ class CallLog(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
 
     call_sid = Column(String(100), unique=True, nullable=False)
-    call_status = Column(String(20), default="initiated")   # initiated / completed
-    response_type = Column(String(20))                      # YES / NO / BUSY
+    call_status = Column(String(20), default="initiated")
+    response_type = Column(String(20))
 
     retry_count = Column(Integer, default=0)
 
@@ -39,4 +38,29 @@ class YesResponse(Base):
 
     id = Column(Integer, primary_key=True)
     call_log_id = Column(Integer, ForeignKey("call_logs.id"))
+    created_at = Column(DateTime, server_default=func.now())
+
+
+# ------------------------------
+# TELECALLERS TABLE
+# ------------------------------
+class Telecaller(Base):
+    __tablename__ = "telecallers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100))
+    phone_number = Column(String(20), unique=True)
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+# ------------------------------
+# TWILIO NUMBERS TABLE
+# ------------------------------
+class TwilioNumber(Base):
+    __tablename__ = "twilio_numbers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(20), unique=True)
+    status = Column(String(20), default="active")
     created_at = Column(DateTime, server_default=func.now())

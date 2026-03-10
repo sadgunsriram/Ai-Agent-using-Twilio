@@ -1,47 +1,72 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from app.db.session import SessionLocal
-from app.db.crud import complete_call, get_call_log_by_sid
+from app.db.crud import complete_call, get_call_log_by_sid, get_active_telecallers
 from app.services.response_handler import handle_yes_response, handle_no_response
 from app.services.call_orchestrator import start_next_call
-from app.config import TELECALLER_NUMBERS
+from app.config import BASE_URL
 
 router = APIRouter()
 
 
-# --------------------------------------------------
-# 🔁 Generate Dial TwiML (Retry Logic)
-# --------------------------------------------------
+
+#  Generate Dial TwiML (Retry Logic)
+
 def generate_dial_twiml(index: int = 0):
 
-    if index >= len(TELECALLER_NUMBERS):
-        return """
-        <Response>
-            <Say>All our counselors are currently busy. We will call you back shortly.</Say>
-            <Hangup/>
-        </Response>
-        """
+    db = SessionLocal()
 
-    number = TELECALLER_NUMBERS[index]
+    try:
+        telecallers = get_active_telecallers(db)
+        numbers = [t.phone_number for t in telecallers]
+
+    finally:
+        db.close()
+
+    print("📞 Telecaller list:", numbers)
+
+    if not numbers:
+        return """
+<Response>
+    <Say>No counselors available right now.</Say>
+    <Hangup/>
+</Response>
+"""
+
+    if index >= len(numbers):
+        return """
+<Response>
+    <Say>All our counselors are currently busy. We will call you back shortly.</Say>
+    <Hangup/>
+</Response>
+"""
+
+    number = numbers[index]
 
     return f"""
-    <Response>
-        <Say>Connecting you to our counselor now.</Say>
-        <Dial action="/twilio/dial-status?index={index}" timeout="15">
-            <Number>{number}</Number>
-        </Dial>
-    </Response>
-    """
+<Response>
+    <Say>Please wait while we connect you to our counselor.</Say>
+    <Dial
+        action="{BASE_URL}/twilio/dial-status?index={index}"
+        method="POST"
+        timeout="20"
+        answerOnBridge="true">
+        <Number>{number}</Number>
+    </Dial>
+</Response>
+"""
 
 
-# --------------------------------------------------
+
 # 🎤 Student ANSWERED → Treat as YES
-# --------------------------------------------------
+
 @router.post("/twilio/voice")
 async def voice_response(request: Request):
 
     form = await request.form()
     call_sid = form.get("CallSid")
+
+    print("📞 Student answered:", call_sid)
 
     if not call_sid:
         return Response("<Response><Hangup/></Response>", media_type="application/xml")
@@ -52,19 +77,47 @@ async def voice_response(request: Request):
         log = get_call_log_by_sid(db, call_sid)
 
         if log and log.call_status != "completed":
+            print("✅ Saving YES response")
+
             complete_call(db, call_sid, "YES")
             handle_yes_response(log)
+
+        # Fetch telecallers from DB
+        telecallers = get_active_telecallers(db)
+        numbers = [t.phone_number for t in telecallers]
 
     finally:
         db.close()
 
-    twiml = generate_dial_twiml(0)
+    if not numbers:
+        return Response(
+            "<Response><Say>No counselors available.</Say></Response>",
+            media_type="application/xml"
+        )
+
+    telecaller = numbers[0]
+
+    twiml = f"""
+<Response>
+    <Say>Please wait while we connect you to our counselor.</Say>
+    <Dial
+        action="{BASE_URL}/twilio/dial-status?index=0"
+        method="POST"
+        timeout="20"
+        answerOnBridge="true">
+        <Number>{telecaller}</Number>
+    </Dial>
+</Response>
+"""
+
+    print("📜 TwiML sent to Twilio:\n", twiml)
+
     return Response(content=twiml.strip(), media_type="application/xml")
 
 
-# --------------------------------------------------
+
 # 🔁 TELECALLER RETRY HANDLER
-# --------------------------------------------------
+
 @router.post("/twilio/dial-status")
 async def dial_status_callback(request: Request):
 
@@ -73,22 +126,27 @@ async def dial_status_callback(request: Request):
     dial_status = form.get("DialCallStatus")
     index = int(request.query_params.get("index", 0))
 
-    # If telecaller answered and call completed
+    print("📡 Telecaller dial status:", dial_status)
+    print("📡 Telecaller index:", index)
+
     if dial_status == "completed":
+        print("✅ Telecaller connected successfully")
         return Response("<Response></Response>", media_type="application/xml")
 
-    # If telecaller failed → try next
     if dial_status in ["busy", "no-answer", "failed", "canceled"]:
         next_index = index + 1
+        print("⚠️ Telecaller unavailable. Trying next telecaller:", next_index)
+
         twiml = generate_dial_twiml(next_index)
+
         return Response(content=twiml.strip(), media_type="application/xml")
 
     return Response("<Response></Response>", media_type="application/xml")
 
 
-# --------------------------------------------------
+
 # 📡 STUDENT CALL STATUS HANDLER
-# --------------------------------------------------
+
 @router.post("/twilio/status")
 async def status_callback(request: Request):
 
@@ -97,27 +155,50 @@ async def status_callback(request: Request):
     call_sid = form.get("CallSid")
     call_status = form.get("CallStatus")
 
+    print("📡 Call SID:", call_sid)
+    print("📡 Call status:", call_status)
+
+    if not call_sid:
+        return ""
+
     db = SessionLocal()
 
     try:
         log = get_call_log_by_sid(db, call_sid)
 
         if not log:
+            print("⚠️ No call log found")
             return ""
 
+        
+        # ❌ STUDENT DID NOT ANSWER
+        
         if call_status in ["busy", "failed", "no-answer", "canceled"]:
+
             if log.call_status != "completed":
+
+                print("❌ Student did not answer → Saving NO")
+
                 complete_call(db, call_sid, "NO")
                 handle_no_response(log)
 
-        if call_status == "completed":
-            result = start_next_call(start_new=False)
+                print("📞 Calling next student...")
+                start_next_call(start_new=False)
 
-            if result.get("status") == "ALL_CALLS_COMPLETED":
-                print("🎯 All students processed.")
+        
+        # 📞 CALL COMPLETED
+        
+        elif call_status == "completed":
+
+            print("📞 Call completed")
+
+            if log.call_status != "completed":
+                complete_call(db, call_sid, "NO")
+
+            print("📞 Calling next student...")
+            start_next_call(start_new=False)
 
     finally:
         db.close()
 
     return ""
-

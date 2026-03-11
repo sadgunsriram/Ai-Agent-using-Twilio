@@ -12,7 +12,6 @@ class Student(Base):
     student_phone = Column(String(15), unique=True, nullable=False)
 
     created_at = Column(DateTime, server_default=func.now())
-
     last_call_time = Column(DateTime)
     last_response = Column(String(20))
 
@@ -41,26 +40,28 @@ class YesResponse(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
-# ------------------------------
-# TELECALLERS TABLE
-# ------------------------------
+# Twilio configuration
+class TwilioConfig(Base):
+    __tablename__ = "twilio_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    account_sid = Column(String(100), nullable=False)
+    auth_token = Column(String(100), nullable=False)
+    phone_number = Column(String(20), nullable=False)
+
+    status = Column(String(20), default="active")
+
+    created_at = Column(DateTime, server_default=func.now())
+
+
+# Telecaller numbers
 class Telecaller(Base):
     __tablename__ = "telecallers"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100))
-    phone_number = Column(String(20), unique=True)
+    phone_number = Column(String(20), nullable=False)
+
     status = Column(String(20), default="active")
-    created_at = Column(DateTime, server_default=func.now())
 
-
-# ------------------------------
-# TWILIO NUMBERS TABLE
-# ------------------------------
-class TwilioNumber(Base):
-    __tablename__ = "twilio_numbers"
-
-    id = Column(Integer, primary_key=True, index=True)
-    phone_number = Column(String(20), unique=True)
-    status = Column(String(20), default="active")
     created_at = Column(DateTime, server_default=func.now())

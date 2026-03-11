@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from app.db.models import Student, CallLog, Telecaller, TwilioNumber
+from app.db.models import Student, CallLog, TwilioConfig, Telecaller
 
 
 def get_next_student_to_call(db: Session, called_students):
@@ -58,27 +58,23 @@ def complete_call(db: Session, call_sid: str, response: str):
     return log
 
 
-# --------------------------------------------------
-# TELECALLERS
-# --------------------------------------------------
-
-def get_active_telecallers(db: Session):
+# Get Twilio credentials
+def get_twilio_config(db: Session):
 
     return (
+        db.query(TwilioConfig)
+        .filter(TwilioConfig.status == "active")
+        .first()
+    )
+
+
+# Get active telecallers
+def get_active_telecallers(db: Session):
+
+    telecallers = (
         db.query(Telecaller)
         .filter(Telecaller.status == "active")
         .all()
     )
 
-
-# --------------------------------------------------
-# TWILIO NUMBER
-# --------------------------------------------------
-
-def get_twilio_number(db: Session):
-
-    return (
-        db.query(TwilioNumber)
-        .filter(TwilioNumber.status == "active")
-        .first()
-    )
+    return [t.phone_number for t in telecallers]

@@ -9,16 +9,16 @@ from app.config import BASE_URL
 router = APIRouter()
 
 
-
-#  Generate Dial TwiML (Retry Logic)
+# --------------------------------------------------
+# Generate Dial TwiML (Retry Logic)
+# --------------------------------------------------
 
 def generate_dial_twiml(index: int = 0):
 
     db = SessionLocal()
 
     try:
-        telecallers = get_active_telecallers(db)
-        numbers = [t.phone_number for t in telecallers]
+        numbers = get_active_telecallers(db)
 
     finally:
         db.close()
@@ -57,8 +57,9 @@ def generate_dial_twiml(index: int = 0):
 """
 
 
-
-# 🎤 Student ANSWERED → Treat as YES
+# --------------------------------------------------
+# Student ANSWERED → Treat as YES
+# --------------------------------------------------
 
 @router.post("/twilio/voice")
 async def voice_response(request: Request):
@@ -82,9 +83,7 @@ async def voice_response(request: Request):
             complete_call(db, call_sid, "YES")
             handle_yes_response(log)
 
-        # Fetch telecallers from DB
-        telecallers = get_active_telecallers(db)
-        numbers = [t.phone_number for t in telecallers]
+        numbers = get_active_telecallers(db)
 
     finally:
         db.close()
@@ -115,8 +114,9 @@ async def voice_response(request: Request):
     return Response(content=twiml.strip(), media_type="application/xml")
 
 
-
-# 🔁 TELECALLER RETRY HANDLER
+# --------------------------------------------------
+# TELECALLER RETRY HANDLER
+# --------------------------------------------------
 
 @router.post("/twilio/dial-status")
 async def dial_status_callback(request: Request):
@@ -144,8 +144,9 @@ async def dial_status_callback(request: Request):
     return Response("<Response></Response>", media_type="application/xml")
 
 
-
-# 📡 STUDENT CALL STATUS HANDLER
+# --------------------------------------------------
+# STUDENT CALL STATUS HANDLER
+# --------------------------------------------------
 
 @router.post("/twilio/status")
 async def status_callback(request: Request):
@@ -170,9 +171,7 @@ async def status_callback(request: Request):
             print("⚠️ No call log found")
             return ""
 
-        
-        # ❌ STUDENT DID NOT ANSWER
-        
+        # Student did not answer
         if call_status in ["busy", "failed", "no-answer", "canceled"]:
 
             if log.call_status != "completed":
@@ -185,9 +184,7 @@ async def status_callback(request: Request):
                 print("📞 Calling next student...")
                 start_next_call(start_new=False)
 
-        
-        # 📞 CALL COMPLETED
-        
+        # Call completed
         elif call_status == "completed":
 
             print("📞 Call completed")
